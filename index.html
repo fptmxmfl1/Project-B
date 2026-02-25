@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Unity Error Auto-Fixer (Web)</title>
+  <style>
+    /* ===== 전체 레이아웃 ===== */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Segoe UI', -apple-system, sans-serif;
+      background: #1e1e2e;
+      color: #cdd6f4;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ===== 헤더 ===== */
+    header {
+      background: #181825;
+      border-bottom: 1px solid #313244;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    header h1 {
+      font-size: 18px;
+      font-weight: 600;
+      color: #cba6f7;
+    }
+
+    header h1 span {
+      color: #6c7086;
+      font-weight: 400;
+      font-size: 13px;
+      margin-left: 8px;
+    }
+
+    /* ===== API 키 설정 바 ===== */
+    .api-bar {
+      background: #181825;
+      border-bottom: 1px solid #313244;
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .api-bar label {
+      font-size: 13px;
+      color: #a6adc8;
+      white-space: nowrap;
+    }
+
+    .api-bar input {
+      flex: 1;
+      max-width: 400px;
+      padding: 6px 12px;
+      background: #313244;
+      border: 1px solid #45475a;
+      border-radius: 6px;
+      color: #cdd6f4;
+      font-size: 13px;
+      font-family: 'Consolas', monospace;
+    }
+
+    .api-bar input:focus {
+      outline: none;
+      border-color: #cba6f7;
+    }
+
+    .api-status {
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      background: #313244;
+      color: #6c7086;
+    }
+
+    .api-status.ready {
+      background: #1e3a2f;
+      color: #a6e3a1;
+    }
+
+    /* ===== 메인 컨텐츠 ===== */
+    main {
+      flex: 1;
+      display: flex;
+      gap: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+
+    /* ===== 왼쪽: 입력 패널 ===== */
+    .input-panel {
+      width: 50%;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid #313244;
+    }
+
+    .panel-header {
+      padding: 12px 20px;
+      background: #181825;
+      border-bottom: 1px solid #313244;
+      font-size: 13px;
+      font-weight: 600;
+      color: #a6adc8;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .input-panel textarea {
+      flex: 1;
+      padding: 16px 20px;
+      background: #1e1e2e;
+      border: none;
+      color: #cdd6f4;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      resize: none;
+    }
+
+    .input-panel textarea:focus {
+      outline: none;
+    }
+
+    .input-panel textarea::placeholder {
+      color: #585b70;
+    }
+
+    .input-actions {
+      padding: 12px 20px;
+      background: #181825;
+      border-top: 1px solid #313244;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    /* ===== 버튼 ===== */
+    .btn {
+      padding: 8px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: #cba6f7;
+      color: #1e1e2e;
+    }
+
+    .btn-primary:hover {
+      background: #b4befe;
+    }
+
+    .btn-primary:disabled {
+      background: #45475a;
+      color: #6c7086;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: #313244;
+      color: #cdd6f4;
+    }
+
+    .btn-secondary:hover {
+      background: #45475a;
+    }
+
+    /* ===== 오른쪽: 결과 패널 ===== */
+    .result-panel {
+      width: 50%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .result-content {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+    }
+
+    /* ===== 결과: 빈 상태 ===== */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: #585b70;
+      gap: 12px;
+    }
+
+    .empty-state .icon {
+      font-size: 48px;
+      opacity: 0.3;
+    }
+
+    .empty-state p {
+      font-size: 14px;
+    }
+
+    /* ===== 결과: 로딩 ===== */
+    .loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      gap: 16px;
+    }
+
+    .spinner {
+      width: 36px;
+      height: 36px;
+      border: 3px solid #313244;
+      border-top-color: #cba6f7;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .loading p {
+      color: #a6adc8;
+      font-size: 14px;
+    }
+
+    /* ===== 결과: 분석 완료 ===== */
+    .result-card {
+      background: #181825;
+      border: 1px solid #313244;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    /* Track 배지 */
+    .track-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .track-a {
+      background: #1e3a2f;
+      color: #a6e3a1;
+    }
+
+    .track-b {
+      background: #3a2f1e;
+      color: #f9e2af;
+    }
+
+    .confidence-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-left: 8px;
+    }
+
+    .confidence-high { background: #1e3a2f; color: #a6e3a1; }
+    .confidence-medium { background: #3a2f1e; color: #f9e2af; }
+    .confidence-low { background: #3a1e1e; color: #f38ba8; }
+
+    .result-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid #313244;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .result-body {
+      padding: 20px;
+    }
+
+    /* 진단 텍스트 */
+    .diagnosis {
+      font-size: 14px;
+      line-height: 1.7;
+      color: #cdd6f4;
+      margin-bottom: 16px;
+    }
+
+    .file-info {
+      font-size: 13px;
+      color: #a6adc8;
+      background: #1e1e2e;
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-family: 'Consolas', monospace;
+      margin-bottom: 16px;
+    }
+
+    /* Diff 미리보기 */
+    .diff-container {
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid #313244;
+      margin-top: 12px;
+    }
+
+    .diff-header {
+      background: #313244;
+      padding: 8px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #a6adc8;
+    }
+
+    .diff-line {
+      padding: 4px 14px;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .diff-removed {
+      background: #3a1e1e;
+      color: #f38ba8;
+    }
+
+    .diff-added {
+      background: #1e3a2f;
+      color: #a6e3a1;
+    }
+
+    /* 에러 메시지 */
+    .error-message {
+      background: #3a1e1e;
+      border: 1px solid #f38ba8;
+      border-radius: 8px;
+      padding: 16px;
+      color: #f38ba8;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    /* ===== 해결 방법 박스 ===== */
+    .solution-box {
+      background: #1e1e2e;
+      border: 1px solid #313244;
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+
+    .solution-header {
+      background: #313244;
+      padding: 8px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #a6adc8;
+    }
+
+    .solution-text {
+      padding: 14px;
+      font-size: 13px;
+      line-height: 1.8;
+      color: #cdd6f4;
+      white-space: pre-wrap;
+    }
+
+    /* ===== 푸터 ===== */
+    footer {
+      background: #181825;
+      border-top: 1px solid #313244;
+      padding: 8px 24px;
+      font-size: 11px;
+      color: #585b70;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 헤더 -->
+  <header>
+    <h1>Unity Error Auto-Fixer <span>Web Edition</span></h1>
+  </header>
+
+  <!-- API 키 입력 바 -->
+  <div class="api-bar">
+    <label>Gemini API Key:</label>
+    <input type="password" id="apiKeyInput" placeholder="AIzaSy... (Google AI Studio에서 발급)">
+    <span class="api-status" id="apiStatus">키 미입력</span>
+  </div>
+
+  <!-- 메인 -->
+  <main>
+    <!-- 왼쪽: 에러 입력 -->
+    <div class="input-panel">
+      <div class="panel-header">
+        <span>에러 로그 입력</span>
+      </div>
+      <textarea
+        id="errorInput"
+        placeholder="Unity 에러 로그를 여기에 붙여넣으세요.&#10;&#10;예시:&#10;NullReferenceException: Object reference not set to an instance of an object&#10;PlayerController.Update () (at Assets/Scripts/PlayerController.cs:42)"
+      ></textarea>
+      <div class="input-actions">
+        <button class="btn btn-primary" id="analyzeBtn" disabled>분석하기</button>
+        <button class="btn btn-secondary" id="clearBtn">지우기</button>
+      </div>
+    </div>
+
+    <!-- 오른쪽: 분석 결과 -->
+    <div class="result-panel">
+      <div class="panel-header">
+        <span>분석 결과</span>
+      </div>
+      <div class="result-content" id="resultContent">
+        <div class="empty-state">
+          <div class="icon">🔍</div>
+          <p>에러 로그를 입력하고 [분석하기]를 클릭하세요</p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- 푸터 -->
+  <footer>
+    Powered by Google Gemini API (gemini-2.5-flash) · 무료 티어 사용 중
+  </footer>
+
+  <script>
+    // ===== DOM 요소 =====
+    const apiKeyInput = document.getElementById('apiKeyInput');
+    const apiStatus = document.getElementById('apiStatus');
+    const errorInput = document.getElementById('errorInput');
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const resultContent = document.getElementById('resultContent');
+    // ===== Gemini API 시스템 프롬프트 =====
+    const SYSTEM_PROMPT = `당신은 Unity C# 에러 분석 전문가입니다.
+사용자가 Unity 에러 로그를 제공하면, 에러를 분석하고 해결 방법을 안내합니다.
+
+반드시 아래 JSON 형식으로만 응답하세요. JSON 외의 텍스트는 절대 포함하지 마세요.
+
+{
+  "fixable": true 또는 false,
+  "confidence": "high" 또는 "medium" 또는 "low",
+  "diagnosis": "에러 원인을 한국어로 설명",
+  "file": "에러가 발생한 파일 경로",
+  "line": 에러 라인 번호(숫자),
+  "solution": "구체적인 해결 방법을 한국어로 단계별 설명",
+  "patch": {
+    "original": "수정 전 코드 (해당 부분만)",
+    "fixed": "수정 후 코드 (해당 부분만)"
+  }
+}
+
+핵심 규칙:
+- 소스 코드가 함께 제공된 경우에만 fixable: true로 설정하고 patch를 제공
+- 소스 코드 없이 에러 로그만 제공된 경우: 반드시 fixable: false, patch는 null로 설정
+- 소스 코드가 없을 때 절대로 코드를 추측하거나 지어내지 마세요 (SomeMethod 같은 가짜 코드 금지)
+- diagnosis는 반드시 한국어로, 에러의 원인을 명확히 설명
+- solution은 반드시 한국어로, 사용자가 따라할 수 있는 구체적인 해결 단계를 설명
+  - 예: "해당 파일의 16번 라인을 열어서, 닫는 괄호 ')'가 누락되었는지 확인하세요"
+  - 예: "PlayerController.cs의 Start() 메서드에서 GetComponent<Rigidbody>()를 호출하는 코드를 추가하세요"
+- file과 line은 에러 로그에서 추출 가능한 경우에만 포함
+- confidence는 확신도 (high: 거의 확실, medium: 가능성 높음, low: 추측)`;
+
+    // ===== API 키 상태 관리 =====
+    apiKeyInput.addEventListener('input', () => {
+      const hasKey = apiKeyInput.value.trim().length > 0;
+      const hasError = errorInput.value.trim().length > 0;
+
+      if (hasKey) {
+        apiStatus.textContent = '키 입력됨';
+        apiStatus.className = 'api-status ready';
+      } else {
+        apiStatus.textContent = '키 미입력';
+        apiStatus.className = 'api-status';
+      }
+
+      analyzeBtn.disabled = !(hasKey && hasError);
+    });
+
+    // ===== 에러 입력 감지 =====
+    errorInput.addEventListener('input', () => {
+      const hasKey = apiKeyInput.value.trim().length > 0;
+      const hasError = errorInput.value.trim().length > 0;
+      analyzeBtn.disabled = !(hasKey && hasError);
+    });
+
+    // ===== 지우기 버튼 =====
+    clearBtn.addEventListener('click', () => {
+      errorInput.value = '';
+      analyzeBtn.disabled = true;
+      resultContent.innerHTML = `
+        <div class="empty-state">
+          <div class="icon">🔍</div>
+          <p>에러 로그를 입력하고 [분석하기]를 클릭하세요</p>
+        </div>`;
+    });
+
+    // ===== Gemini API 호출 =====
+    async function callGeminiAPI(errorLog) {
+      const apiKey = apiKeyInput.value.trim();
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+
+      const requestBody = {
+        contents: [
+          {
+            role: "user",
+            parts: [
+              {
+                text: `${SYSTEM_PROMPT}\n\n--- 에러 로그 및 소스코드 ---\n${errorLog}`
+              }
+            ]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.1,
+          responseMimeType: "application/json"
+        }
+      };
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        if (response.status === 429) {
+          throw new Error('API 호출 한도 초과입니다. 잠시 후 다시 시도해주세요. (무료 티어: 분당 10회)');
+        } else if (response.status === 400) {
+          throw new Error('API 키가 유효하지 않습니다. Google AI Studio에서 키를 확인해주세요.');
+        } else {
+          throw new Error(`API 오류 (${response.status}): ${errorData.error?.message || '알 수 없는 오류'}`);
+        }
+      }
+
+      const data = await response.json();
+
+      // Gemini 응답에서 텍스트 추출
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) {
+        throw new Error('API 응답에서 분석 결과를 찾을 수 없습니다.');
+      }
+
+      // JSON 파싱
+      const result = JSON.parse(text);
+      return result;
+    }
+
+    // ===== 결과 렌더링 =====
+    function renderResult(result) {
+      const trackClass = result.fixable ? 'track-a' : 'track-b';
+      const trackLabel = result.fixable ? 'Track A · 수정 가능' : 'Track B · 진단 제공';
+      const confClass = `confidence-${result.confidence}`;
+      const confLabel = { high: '확신도 높음', medium: '확신도 중간', low: '확신도 낮음' }[result.confidence] || '';
+
+      let html = `
+        <div class="result-card">
+          <div class="result-header">
+            <span class="track-badge ${trackClass}">${trackLabel}</span>
+            <span class="confidence-badge ${confClass}">${confLabel}</span>
+          </div>
+          <div class="result-body">
+            <div class="diagnosis">${escapeHtml(result.diagnosis)}</div>`;
+
+      // 파일 정보
+      if (result.file) {
+        html += `<div class="file-info">📁 ${escapeHtml(result.file)}${result.line ? ` : ${result.line}번 라인` : ''}</div>`;
+      }
+
+      // 해결 방법 표시
+      if (result.solution) {
+        html += `
+          <div class="solution-box">
+            <div class="solution-header">해결 방법</div>
+            <div class="solution-text">${escapeHtml(result.solution)}</div>
+          </div>`;
+      }
+
+      // Track A: diff 표시 (소스 코드가 제공되어 실제 패치가 있는 경우만)
+      if (result.fixable && result.patch) {
+        html += `
+          <div class="diff-container">
+            <div class="diff-header">수정 코드</div>
+            <div class="diff-line diff-removed">- ${escapeHtml(result.patch.original)}</div>
+            <div class="diff-line diff-added">+ ${escapeHtml(result.patch.fixed)}</div>
+          </div>`;
+      }
+
+      html += `
+          </div>
+        </div>`;
+
+      resultContent.innerHTML = html;
+    }
+
+    // ===== HTML 이스케이프 =====
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // ===== 분석 버튼 클릭 =====
+    analyzeBtn.addEventListener('click', async () => {
+      const errorLog = errorInput.value.trim();
+      if (!errorLog) return;
+
+      // 로딩 표시
+      analyzeBtn.disabled = true;
+      analyzeBtn.textContent = '분석 중...';
+      resultContent.innerHTML = `
+        <div class="loading">
+          <div class="spinner"></div>
+          <p>Gemini API로 에러를 분석하고 있습니다...</p>
+        </div>`;
+
+      try {
+        const result = await callGeminiAPI(errorLog);
+        renderResult(result);
+      } catch (error) {
+        resultContent.innerHTML = `
+          <div class="error-message">
+            <strong>분석 실패</strong><br><br>
+            ${escapeHtml(error.message)}
+          </div>`;
+      } finally {
+        analyzeBtn.disabled = false;
+        analyzeBtn.textContent = '분석하기';
+      }
+    });
+  </script>
+</body>
+</html>
