@@ -19,6 +19,8 @@ namespace ErrorAutoFixer
         private int selectedErrorIndex = -1;
         private bool isAnalyzing;
         private string analysisErrorMessage;
+        private string patchResultMessage;    // 패치 적용/되돌리기 결과 메시지
+        private bool patchResultSuccess;      // 패치 결과 성공 여부 (메시지 색상용)
 
         // === 스타일 캐시 ===
         private GUIStyle headerStyle;
@@ -43,17 +45,24 @@ namespace ErrorAutoFixer
         private void OnEnable()
         {
             // 에러 캡처 이벤트 구독 (새 에러 발생 시 UI 갱신)
-            ErrorCapture.OnErrorCaptured += OnNewErrorCaptured;
+            ErrorCapture.OnErrorCaptured += OnErrorListUpdated;
+            ErrorCapture.OnErrorListChanged += OnErrorListUpdated;
         }
 
         private void OnDisable()
         {
-            ErrorCapture.OnErrorCaptured -= OnNewErrorCaptured;
+            ErrorCapture.OnErrorCaptured -= OnErrorListUpdated;
+            ErrorCapture.OnErrorListChanged -= OnErrorListUpdated;
         }
 
-        /// <summary>새 에러 캡처 시 UI 갱신</summary>
-        private void OnNewErrorCaptured(CapturedError error)
+        /// <summary>에러 목록 변경 시 UI 갱신</summary>
+        private void OnErrorListUpdated(CapturedError error) => OnErrorListUpdated();
+        private void OnErrorListUpdated()
         {
+            // 선택 인덱스가 범위를 벗어나면 초기화
+            if (selectedErrorIndex >= ErrorCapture.CapturedErrors.Count)
+                selectedErrorIndex = -1;
+
             Repaint();
         }
 
@@ -139,6 +148,13 @@ namespace ErrorAutoFixer
             GUILayout.Label(captureStatus, GUILayout.Width(70));
 
             GUILayout.FlexibleSpace();
+
+            // 콘솔 에러 스캔 버튼
+            if (GUILayout.Button("스캔", EditorStyles.toolbarButton, GUILayout.Width(40)))
+            {
+                ErrorCapture.ScanConsoleErrors();
+                Repaint();
+            }
 
             // 설정 버튼
             if (GUILayout.Button("설정", EditorStyles.toolbarButton, GUILayout.Width(40)))
@@ -250,6 +266,7 @@ namespace ErrorAutoFixer
             if (Event.current.type == EventType.MouseDown && lastRect.Contains(Event.current.mousePosition))
             {
                 selectedErrorIndex = index;
+                patchResultMessage = null; // 에러 선택 변경 시 패치 메시지 초기화
                 Event.current.Use();
                 Repaint();
             }
@@ -287,16 +304,23 @@ namespace ErrorAutoFixer
                 return;
             }
 
-            // 에러 메시지 표시
+            // API 에러 메시지 표시
             if (!string.IsNullOrEmpty(analysisErrorMessage))
             {
                 EditorGUILayout.HelpBox(analysisErrorMessage, MessageType.Error);
             }
 
+            // 패치 결과 메시지 표시
+            if (!string.IsNullOrEmpty(patchResultMessage))
+            {
+                EditorGUILayout.HelpBox(patchResultMessage,
+                    patchResultSuccess ? MessageType.Info : MessageType.Error);
+            }
+
             // 분석 결과 표시
             if (error.isAnalyzed && error.analysisResult != null)
             {
-                DrawAnalysisResult(error.analysisResult);
+                DrawAnalysisResult(error);
             }
             else if (!error.isAnalyzed)
             {
@@ -307,8 +331,10 @@ namespace ErrorAutoFixer
         }
 
         /// <summary>분석 결과 상세 표시</summary>
-        private void DrawAnalysisResult(AnalysisResult result)
+        private void DrawAnalysisResult(CapturedError error)
         {
+            var result = error.analysisResult;
+
             // Track 배지 + 확신도
             EditorGUILayout.BeginHorizontal();
             string trackLabel = result.fixable ? "Track A: 수정 가능" : "Track B: 진단만 제공";
@@ -349,30 +375,31 @@ namespace ErrorAutoFixer
                 EditorGUILayout.Space(5);
             }
 
-            // Track A: 패치 정보 미리보기 (Phase 1에서는 텍스트만 표시)
+            // Track A: diff 미리보기 + 수정/되돌리기 버튼
             if (result.fixable && result.patch != null)
             {
-                EditorGUILayout.LabelField("수정 제안", EditorStyles.boldLabel);
-
-                // 수정 전
-                EditorGUILayout.LabelField("수정 전:", EditorStyles.miniLabel);
-                EditorGUILayout.BeginVertical("box");
-                EditorGUILayout.SelectableLabel(result.patch.original,
-                    EditorStyles.wordWrappedLabel, GUILayout.MinHeight(20));
-                EditorGUILayout.EndVertical();
-
-                // 수정 후
-                EditorGUILayout.LabelField("수정 후:", EditorStyles.miniLabel);
-                EditorGUILayout.BeginVertical("box");
-                EditorGUILayout.SelectableLabel(result.patch.fixedCode,
-                    EditorStyles.wordWrappedLabel, GUILayout.MinHeight(20));
-                EditorGUILayout.EndVertical();
-
-                EditorGUILayout.Space(5);
-                EditorGUILayout.HelpBox(
-                    "자동 수정 기능은 Phase 2에서 제공됩니다. 위 수정 제안을 참고하여 수동으로 수정해주세요.",
-                    MessageType.Info);
+                DrawTrackASection(error, result);
             }
+        }
+
+        /// <summary>Track A: diff 미리보기 및 패치 액션 버튼</summary>
+        private void DrawTrackASection(CapturedError error, AnalysisResult result)
+        {
+            EditorGUILayout.Space(5);
+
+            // diff 미리보기
+            DiffPreviewDrawer.DrawDiffPreview(result.patch, result.line);
+
+            EditorGUILayout.Space(10);
+
+            // [수정 적용] 버튼
+            var applyColor = GUI.backgroundColor;
+            GUI.backgroundColor = new Color(0.3f, 0.8f, 0.4f);
+            if (GUILayout.Button("수정 적용", GUILayout.Height(28)))
+            {
+                OnApplyPatchClicked(error, result);
+            }
+            GUI.backgroundColor = applyColor;
         }
 
         /// <summary>로딩 인디케이터</summary>
@@ -397,6 +424,7 @@ namespace ErrorAutoFixer
 
             isAnalyzing = true;
             analysisErrorMessage = null;
+            patchResultMessage = null;
 
             // 소스 코드 읽기 (파일 정보가 있는 경우)
             string sourceCode = null;
@@ -432,12 +460,31 @@ namespace ErrorAutoFixer
             Repaint();
         }
 
+        /// <summary>[수정 적용] 버튼 클릭 처리</summary>
+        private void OnApplyPatchClicked(CapturedError error, AnalysisResult result)
+        {
+            // 확인 다이얼로그
+            bool confirmed = EditorUtility.DisplayDialog(
+                "수정 적용 확인",
+                $"다음 파일에 패치를 적용합니다:\n{result.file}\n\n문제가 있으면 Git에서 되돌릴 수 있습니다.\n계속하시겠습니까?",
+                "적용", "취소");
+
+            if (!confirmed) return;
+
+            var patchResult = FilePatcher.ApplyPatch(result);
+
+            patchResultMessage = patchResult.message;
+            patchResultSuccess = patchResult.success;
+            Repaint();
+        }
+
         /// <summary>[초기화] 버튼 클릭 처리</summary>
         private void OnClearClicked()
         {
             ErrorCapture.ClearErrors();
             selectedErrorIndex = -1;
             analysisErrorMessage = null;
+            patchResultMessage = null;
             Repaint();
         }
 
