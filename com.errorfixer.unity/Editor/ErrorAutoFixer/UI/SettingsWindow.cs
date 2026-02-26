@@ -4,7 +4,7 @@ using UnityEngine;
 namespace ErrorAutoFixer
 {
     /// <summary>
-    /// API 키 및 기본 설정을 관리하는 설정 창
+    /// API 키, 모델 선택, 캐시 관리 등 설정 창
     /// </summary>
     public class SettingsWindow : EditorWindow
     {
@@ -15,13 +15,14 @@ namespace ErrorAutoFixer
         private string testResultMessage = string.Empty;
         private bool? testResultSuccess;
         private bool autoCaptureEnabled;
+        private int selectedModelIndex;
 
         /// <summary>설정 창 열기</summary>
         [MenuItem("Tools/Error Auto Fixer/Settings", priority = 20)]
         public static void ShowWindow()
         {
             var window = GetWindow<SettingsWindow>("Error Auto Fixer 설정");
-            window.minSize = new Vector2(400, 300);
+            window.minSize = new Vector2(400, 400);
         }
 
         private void OnEnable()
@@ -29,6 +30,7 @@ namespace ErrorAutoFixer
             // 저장된 설정 로드
             apiKeyInput = ErrorFixerSettings.GetAPIKey();
             autoCaptureEnabled = ErrorFixerSettings.IsAutoCaptureEnabled();
+            selectedModelIndex = ErrorFixerSettings.GetModelIndex();
         }
 
         private void OnGUI()
@@ -47,8 +49,20 @@ namespace ErrorAutoFixer
             EditorGUILayout.Space(10);
             DrawDivider();
 
+            // 모델 선택 섹션
+            DrawModelSection();
+
+            EditorGUILayout.Space(10);
+            DrawDivider();
+
             // 캡처 설정 섹션
             DrawCaptureSettings();
+
+            EditorGUILayout.Space(10);
+            DrawDivider();
+
+            // 캐시 관리 섹션
+            DrawCacheSection();
 
             EditorGUILayout.Space(10);
             DrawDivider();
@@ -110,7 +124,6 @@ namespace ErrorAutoFixer
             if (!string.IsNullOrEmpty(testResultMessage))
             {
                 EditorGUILayout.Space(3);
-                var style = new GUIStyle(EditorStyles.helpBox);
                 if (testResultSuccess == true)
                 {
                     EditorGUILayout.HelpBox(testResultMessage, MessageType.Info);
@@ -131,6 +144,30 @@ namespace ErrorAutoFixer
             {
                 Application.OpenURL("https://aistudio.google.com");
             }
+        }
+
+        /// <summary>Gemini 모델 선택 UI</summary>
+        private void DrawModelSection()
+        {
+            EditorGUILayout.Space(5);
+            EditorGUILayout.LabelField("Gemini 모델 선택", EditorStyles.boldLabel);
+            EditorGUILayout.Space(3);
+
+            EditorGUI.BeginChangeCheck();
+            selectedModelIndex = EditorGUILayout.Popup(
+                "모델",
+                selectedModelIndex,
+                ErrorFixerSettings.MODEL_DESCRIPTIONS);
+            if (EditorGUI.EndChangeCheck())
+            {
+                ErrorFixerSettings.SetModel(ErrorFixerSettings.AVAILABLE_MODELS[selectedModelIndex]);
+            }
+
+            EditorGUILayout.HelpBox(
+                "flash: 속도/품질 균형 (추천)\n" +
+                "flash-lite: 빠른 응답, 간단한 에러에 적합\n" +
+                "pro: 높은 분석 품질, 일일 요청 한도 적음",
+                MessageType.Info);
         }
 
         /// <summary>자동 캡처 설정 UI</summary>
@@ -158,6 +195,34 @@ namespace ErrorAutoFixer
                 MessageType.Info);
         }
 
+        /// <summary>캐시 관리 UI</summary>
+        private void DrawCacheSection()
+        {
+            EditorGUILayout.Space(5);
+            EditorGUILayout.LabelField("분석 결과 캐시", EditorStyles.boldLabel);
+            EditorGUILayout.Space(3);
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("캐시된 항목 수", ErrorCache.Count.ToString());
+
+            if (GUILayout.Button("캐시 초기화", GUILayout.Width(100)))
+            {
+                if (EditorUtility.DisplayDialog(
+                    "캐시 초기화",
+                    "저장된 모든 분석 결과 캐시를 삭제합니다.\n계속하시겠습니까?",
+                    "삭제", "취소"))
+                {
+                    ErrorCache.ClearAll();
+                }
+            }
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.HelpBox(
+                "동일한 에러가 반복되면 캐시된 결과를 즉시 표시합니다.\n" +
+                "분석 결과가 부정확한 경우 캐시를 초기화하세요.",
+                MessageType.Info);
+        }
+
         /// <summary>버전 및 정보 표시</summary>
         private void DrawAboutSection()
         {
@@ -165,7 +230,7 @@ namespace ErrorAutoFixer
             EditorGUILayout.LabelField("정보", EditorStyles.boldLabel);
             EditorGUILayout.Space(3);
 
-            EditorGUILayout.LabelField("버전", "0.1.0");
+            EditorGUILayout.LabelField("버전", "0.2.0");
             EditorGUILayout.LabelField("모델", ErrorFixerSettings.GetModelName());
             EditorGUILayout.LabelField("캡처 상태", ErrorCapture.IsCapturing ? "캡처 중" : "중지됨");
             EditorGUILayout.LabelField("캡처된 에러 수", ErrorCapture.CapturedErrors.Count.ToString());

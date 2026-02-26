@@ -422,9 +422,20 @@ namespace ErrorAutoFixer
 
             var error = ErrorCapture.CapturedErrors[selectedErrorIndex];
 
-            isAnalyzing = true;
             analysisErrorMessage = null;
             patchResultMessage = null;
+
+            // 캐시 확인 (동일 에러 메시지의 이전 분석 결과가 있으면 재활용)
+            var cached = ErrorCache.Get(error.message);
+            if (cached != null)
+            {
+                error.analysisResult = cached;
+                error.isAnalyzed = true;
+                Repaint();
+                return;
+            }
+
+            isAnalyzing = true;
 
             // 소스 코드 읽기 (파일 정보가 있는 경우)
             string sourceCode = null;
@@ -433,7 +444,6 @@ namespace ErrorAutoFixer
                 var context = SourceCodeReader.ReadContext(error.filePath, error.lineNumber);
                 if (context.fileExists)
                 {
-                    // 전체 소스가 있으면 전체를, 아니면 주변 코드를 전송
                     sourceCode = context.fullSource ?? context.surroundingCode;
                 }
             }
@@ -442,10 +452,11 @@ namespace ErrorAutoFixer
             GeminiAPIClient.AnalyzeError(error, sourceCode,
                 result =>
                 {
-                    // 성공: 분석 결과 저장
+                    // 성공: 분석 결과 저장 + 캐시에 추가
                     error.analysisResult = result;
                     error.isAnalyzed = true;
                     isAnalyzing = false;
+                    ErrorCache.Put(error.message, result);
                     Repaint();
                 },
                 errorMessage =>
